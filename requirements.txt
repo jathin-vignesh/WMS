@@ -1,0 +1,8 @@
+sqlalchemy
+fastapi
+uvicorn
+psycopg2
+dotenv
+python-jose
+pydantic[email]
+pytz
