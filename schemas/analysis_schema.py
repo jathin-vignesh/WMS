@@ -1,9 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional, List
 
-# -----------------------
-# Inventory Summary
-# -----------------------
 class InventorySummaryItem(BaseModel):
     product_id: int
     product_name: str
@@ -17,20 +14,12 @@ class InventorySummaryOut(BaseModel):
     rows: List[InventorySummaryItem]
     total_stock_value: float
 
-# -----------------------
-# Low Stock
-# -----------------------
 class LowStockItem(BaseModel):
     product_id: int
     product_name: str
-    total_received_quantity: int  
+    available_quantity: int
     threshold: Optional[int] = 10
 
-
-
-# -----------------------
-# Sales Summary
-# -----------------------
 class SalesSummaryItem(BaseModel):
     product_id: int
     product_name: str
@@ -41,9 +30,6 @@ class SalesSummaryOut(BaseModel):
     rows: List[SalesSummaryItem]
     total_revenue: float
 
-# -----------------------
-# Purchase Summary
-# -----------------------
 class PurchaseSummaryItem(BaseModel):
     supplier_id: int
     supplier_name: str
