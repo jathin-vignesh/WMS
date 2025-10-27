@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from db import get_db
+from utils.auth_helper import staff_required
 from schemas import supplier_schema as schemas
 from services import supplier_service
 from models import models as supplier_models
@@ -8,7 +8,7 @@ from models import models as supplier_models
 router = APIRouter(prefix="/purchase-orders", tags=["Purchase Orders"])
 
 @router.post("/", response_model=schemas.PurchaseOrderOut)
-def create_po(po: schemas.PurchaseOrderCreate, db: Session = Depends(get_db)):
+def create_po(po: schemas.PurchaseOrderCreate, db: Session = Depends(staff_required)):
     return supplier_service.create_purchase_order(db, po)
 
 @router.put(
@@ -16,7 +16,7 @@ def create_po(po: schemas.PurchaseOrderCreate, db: Session = Depends(get_db)):
     summary="Purchase Tracking",
     description="Track and update received quantities for a purchase order."
 )
-def purchase_tracking(order_id: int, data: schemas.ReceiveOrder, db: Session = Depends(get_db)):
+def purchase_tracking(order_id: int, data: schemas.ReceiveOrder, db: Session = Depends(staff_required)):
     if not data.received_items:
         raise HTTPException(status_code=400, detail="No items provided to mark as received.")
     return supplier_service.mark_order_received(db, order_id, data.received_items)
@@ -25,7 +25,7 @@ def purchase_tracking(order_id: int, data: schemas.ReceiveOrder, db: Session = D
 def get_items_by_status(
     order_id: int,
     status: str = Query(..., enum=["pending", "partial", "received"]),
-    db: Session = Depends(get_db),
+    db: Session = Depends(staff_required),
 ):
     po = (
         db.query(supplier_models.PurchaseOrder)

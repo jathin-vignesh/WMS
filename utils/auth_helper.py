@@ -44,7 +44,10 @@ def verify_token(token: str):
     except JWTError:
         return None
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
+def get_current_user_and_db(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
     token = credentials.credentials
     payload = verify_token(token)
     if not payload:
@@ -57,29 +60,24 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-    return user
-
-def admin_required(current_user: User = Depends(get_current_user)):
-    """Allow only admin to access."""
-    if current_user.role != UserRole.admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
-        )
-    return current_user
+    return user, db
 
 
-def manager_required(current_user: User = Depends(get_current_user)):
-    """Allow admin or manager."""
-    if current_user.role not in [UserRole.admin, UserRole.manager]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Manager or Admin access required"
-        )
-    return current_user
+def admin_required(data=Depends(get_current_user_and_db)):
+    user, db = data
+    if user.role != UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return db
 
 
-def staff_required(current_user: User = Depends(get_current_user)):
-    """Allow all roles (staff, manager, admin)."""
-    # Since staff is the lowest level, even if admin or manager accesses, it’s fine.
-    return current_user
+def manager_required(data=Depends(get_current_user_and_db)):
+    user, db = data
+    if user.role not in [UserRole.admin, UserRole.manager]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Manager or Admin access required")
+    return db
+
+
+def staff_required(data=Depends(get_current_user_and_db)):
+    # staff, manager, admin all allowed
+    _, db = data
+    return db
