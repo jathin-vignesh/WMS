@@ -8,18 +8,15 @@ from schemas.analysis_schema import (
     InventorySummaryItem, InventorySummaryOut,
     LowStockItem, SalesSummaryItem, PurchaseSummaryItem
 )
- 
- 
+from fastapi import HTTPException,status
 def inventory_summary(db: Session) -> InventorySummaryOut:
     """Return stock details per product and total inventory value."""
     try:
         if db is None:
             raise ValueError("Database session not provided.")
- 
         products = db.query(Product).all()
         if not products:
             return InventorySummaryOut(rows=[], total_stock_value=0)
- 
         summary_rows = []
         total_stock_value = 0
  
@@ -36,8 +33,6 @@ def inventory_summary(db: Session) -> InventorySummaryOut:
                     available_quantity=available_quantity,
                     unit_price=p.unit_price,
                     total_value=total_value,
-                    total_ordered_quantity=0,
-                    total_received_quantity=0
                 )
             )
  
@@ -46,16 +41,22 @@ def inventory_summary(db: Session) -> InventorySummaryOut:
     except SQLAlchemyError as e:
         print(f"[DB Error - inventory_summary]: {e}")
         return InventorySummaryOut(rows=[], total_stock_value=0)
-    except Exception as e:
-        print(f"[Error - inventory_summary]: {e}")
-        return InventorySummaryOut(rows=[], total_stock_value=0)
  
  
 def low_stock(db: Session, threshold: int = 10):
     """Return products whose quantity is below threshold."""
     try:
         if db is None:
-            raise ValueError("Database session not provided.")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Database session not provided."
+            )
+ 
+        if threshold < 10:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Minimum threshold value should be 10."
+            )
  
         products = db.query(Product).all()
         if not products:
@@ -81,11 +82,19 @@ def low_stock(db: Session, threshold: int = 10):
         return low_stock_items
  
     except SQLAlchemyError as e:
-        print(f"[DB Error - low_stock]: {e}")
-        return []
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error occurred: {str(e)}"
+        )
+ 
+    except HTTPException:
+        raise
+ 
     except Exception as e:
-        print(f"[Error - low_stock]: {e}")
-        return []
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error: {str(e)}"
+        )
  
  
 def sales_summary(db: Session, limit: int = 50):
@@ -105,7 +114,7 @@ def sales_summary(db: Session, limit: int = 50):
                 db.query(OrderItem)
                 .join(Order, Order.id == OrderItem.order_id)
                 .filter(OrderItem.product_id == p.id)
-                .filter(Order.status.in_(["Shipped", "Delivered", "Shipment started", "received"]))
+                .filter(Order.status.in_(["Shipped", "Delivered", "Shipment started", "received","Pending","accepted"]))
                 .all()
             )
  

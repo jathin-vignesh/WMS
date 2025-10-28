@@ -45,6 +45,7 @@ def get_suppliers(db: Session):
 
 # ----------------- Purchase Order Functions ----------------- #
 def create_purchase_order(db: Session, po_data: schemas.PurchaseOrderCreate):
+    # Basic validations
     if (
         (not po_data.supplier_id or po_data.supplier_id == 0)
         and len(po_data.items) == 1
@@ -57,41 +58,53 @@ def create_purchase_order(db: Session, po_data: schemas.PurchaseOrderCreate):
     if not po_data.supplier_id or po_data.supplier_id <= 0:
         raise HTTPException(status_code=400, detail="Enter a valid Supplier ID (must be a positive number).")
 
-    supplier_exists = db.query(models.Supplier).filter(models.Supplier.id == po_data.supplier_id).first()
-    if not supplier_exists:
+    # Check supplier exists
+    supplier = db.query(models.Supplier).filter(models.Supplier.id == po_data.supplier_id).first()
+    if not supplier:
         raise HTTPException(status_code=404, detail=f"Supplier with ID {po_data.supplier_id} does not exist.")
 
-    if not po_data.items or len(po_data.items) == 0:
+    if not po_data.items:
         raise HTTPException(status_code=400, detail="Please enter at least one product item for the purchase order.")
 
-    po = models.PurchaseOrder(supplier_id=po_data.supplier_id, status="pending", created_at=datetime.now(IST))
-    db.add(po)
-    db.commit()
-    db.refresh(po)
-
+    #  Validate all items
+    validated_items = []
     for i, item in enumerate(po_data.items, start=1):
         if not item.product_id or item.product_id <= 0:
             raise HTTPException(status_code=400, detail=f"Item {i}: Enter a valid Product ID.")
+
         product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
         if not product:
             raise HTTPException(status_code=404, detail=f"Item {i}: Product with ID {item.product_id} not found.")
+
         if not item.quantity or item.quantity <= 0:
             raise HTTPException(status_code=400, detail=f"Item {i}: Quantity must be greater than 0.")
+
         if not item.unit_cost or item.unit_cost <= 0:
             raise HTTPException(status_code=400, detail=f"Item {i}: Unit cost must be greater than 0.")
 
-        po_item = models.PurchaseOrderItem(
+        validated_items.append(item)
+    po = models.PurchaseOrder(
+        supplier_id=po_data.supplier_id,
+        status="pending",
+        created_at=datetime.now(IST)
+    )
+    db.add(po)
+    db.flush()  # get po.id before commit
+
+    # Add all validated items
+    for item in validated_items:
+        db.add(models.PurchaseOrderItem(
             order_id=po.id,
             product_id=item.product_id,
             quantity=item.quantity,
             unit_cost=item.unit_cost,
             received_quantity=0
-        )
-        db.add(po_item)
+        ))
 
     db.commit()
     db.refresh(po)
     return po
+
 
 
 def mark_order_received(db: Session, order_id: int, received_items: list):

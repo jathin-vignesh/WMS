@@ -7,8 +7,6 @@ class InventorySummaryItem(BaseModel):
     available_quantity: int
     unit_price: float
     total_value: float
-    total_ordered_quantity: int
-    total_received_quantity: int
  
 class InventorySummaryOut(BaseModel):
     rows: List[InventorySummaryItem]

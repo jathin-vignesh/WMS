@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException,status
 from typing import List, Optional
 from models import models
@@ -7,20 +8,44 @@ from schemas import product_schema as schemas
 
 # --------- PRODUCTS ---------
 def create_product(db: Session, product_in: schemas.ProductCreate) -> models.Product:
-    # Check if category exists
-    category = db.query(models.Category).filter(models.Category.id == product_in.category_id).first()
-    if not category:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Category with ID {product_in.category_id} not found"
-        )
+    try:
+        # Step 1: Validate Category
+        category = db.query(models.Category).filter(models.Category.id == product_in.category_id).first()
+        if not category:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Category with ID {product_in.category_id} not found"
+            )
 
-    # Create product
-    product = models.Product(**product_in.dict())
-    db.add(product)
-    db.commit()
-    db.refresh(product)
-    return product
+        # Step 2: Create Product
+        product = models.Product(**product_in.dict())
+        db.add(product)
+        db.commit()
+        db.refresh(product)
+
+        # Step 3: Create Matching Inventory Record
+        inventory = models.Inventory(
+            product_id=product.id,
+            quantity=product.quantity  # initialize with product quantity
+        )
+        db.add(inventory)
+        db.commit()
+        db.refresh(inventory)
+
+        return product
+
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Integrity error while creating product or inventory (possibly duplicate SKU or invalid references)."
+        )
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error: {str(e)}"
+        )
 
 def get_product(db: Session, product_id: int) -> Optional[models.Product]:
     return db.query(models.Product).filter(models.Product.id == product_id).first()
