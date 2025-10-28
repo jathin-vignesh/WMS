@@ -31,7 +31,7 @@ class ProductBase(BaseModel):
 
     @field_validator("unit_price")
     def unit_price_must_be_positive(cls, v: float) -> float:
-        if v < 0:
+        if v <= 0:
             raise ValueError("Unit price must be greater than 0")
         return v
 
@@ -46,7 +46,7 @@ class ProductCreate(ProductBase):
 
     @field_validator("quantity")
     def quantity_must_be_positive(cls, v: int) -> int:
-        if v <= 0:
+        if v < 0:
             raise ValueError("Quantity must be greater than 0")
         return v
 

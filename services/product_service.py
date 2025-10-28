@@ -56,17 +56,42 @@ def update_product(db: Session, product_id: int, patch: schemas.ProductUpdate) -
 
     return product
 
+
 def adjust_stock(db: Session, product_id: int, adjustment: int) -> models.Product:
-    product = get_product(db, product_id)
+    # Fetch product
+    product = db.query(models.Product).filter(models.Product.id == product_id).first()
     if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
-    new_qty = product.quantity + adjustment
-    if new_qty < 0:
-        raise HTTPException(status_code=400, detail="Quantity cannot go below zero")
+    # Fetch inventory entry
+    inventory = db.query(models.Inventory).filter(models.Inventory.product_id == product_id).first()
+    if not inventory:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Inventory record not found for product ID {product_id}"
+        )
 
-    product.quantity = new_qty
+    # Calculate new quantities
+    new_product_qty = product.quantity + adjustment
+    new_inventory_qty = inventory.quantity + adjustment
+
+    # Prevent negative quantities
+    if new_product_qty < 0 or new_inventory_qty < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Quantity cannot go below zero"
+        )
+
+    # Apply updates
+    product.quantity = new_product_qty
+    inventory.quantity = new_inventory_qty
+
+    # Save changes
     db.add(product)
+    db.add(inventory)
     db.commit()
     db.refresh(product)
+    db.refresh(inventory)
+
     return product
+

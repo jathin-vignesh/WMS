@@ -3,7 +3,7 @@ from fastapi import HTTPException, status
 from models.models import Order
 from models.models import OrderItem
 from models.models import Customer
-from models.models import Product
+from models.models import Product,Inventory
 from schemas.order_schema import OrderCreate
 
 # Create a new Order
@@ -21,7 +21,6 @@ def create_order(db: Session, order_data: OrderCreate):
     valid_items = []
 
     for item in order_data.items:
-        # Check for invalid quantity
         if item.quantity <= 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -35,16 +34,24 @@ def create_order(db: Session, order_data: OrderCreate):
                 detail=f"Product with ID {item.product_id} not found"
             )
 
-        # Check stock availability
-        if product.quantity < item.quantity:
+        # ✅ Fetch inventory record
+        inventory = db.query(Inventory).filter(Inventory.product_id == item.product_id).first()
+        if not inventory:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No inventory record found for product ID {item.product_id}"
+            )
+
+        # ✅ Check stock availability (use inventory stock, not product.quantity)
+        if inventory.quantity < item.quantity:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Not enough stock for product {product.name}"
+                detail=f"Not enough stock in inventory for product {product.name}"
             )
 
         price = item.quantity * product.unit_price
         total += price
-        valid_items.append((product, item, price))
+        valid_items.append((product, inventory, item, price))
 
     # Step 3: Create Order
     order = Order(customer_id=order_data.customer_id, total_amount=total)
@@ -52,8 +59,8 @@ def create_order(db: Session, order_data: OrderCreate):
     db.commit()
     db.refresh(order)
 
-    # Step 4: Create Order Items & Update Inventory
-    for product, item, price in valid_items:
+    # Step 4: Create Order Items & Update Product + Inventory Quantities
+    for product, inventory, item, price in valid_items:
         order_item = OrderItem(
             order_id=order.id,
             product_id=item.product_id,
@@ -61,7 +68,12 @@ def create_order(db: Session, order_data: OrderCreate):
             price=price
         )
         db.add(order_item)
-        product.quantity -= item.quantity  # Reduce stock
+
+        # ✅ Reduce both Product and Inventory stock
+        product.quantity -= item.quantity
+        inventory.quantity -= item.quantity
+        db.add(product)
+        db.add(inventory)
 
     db.commit()
     db.refresh(order)
